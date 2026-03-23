@@ -13,9 +13,19 @@
     </div>
 </div>
 
-<!-- <h5 align="center"><em>Kaijin Chen<sup>1,*</sup>, Dingkang Liang<sup>1</sup>, Xin Zhou<sup>1</sup>, Yikang Ding<sup>2</sup>, Xiaoqiang Liu<sup>2</sup>, Pengfei Wan<sup>2</sup>, Xiang Bai<sup>1</sup> </em></h5>
-<sup>1</sup> Huazhong University of Science and Technology, <sup>2</sup> Kling Team, Kuaishou Technology <br>
-<small><sup>*</sup> Work done during an internship at Kling Team, Kuaishou Technology.</small> -->
+<h5 align="center"><em>
+  Kaijin Chen<sup>1</sup>,
+  Dingkang Liang<sup>1</sup>,
+  Xin Zhou<sup>1</sup>,
+  Yikang Ding<sup>2</sup>,
+  Xiaoqiang Liu<sup>2</sup>,
+  Pengfei Wan<sup>2</sup>,
+  Xiang Bai<sup>1</sup>
+</em></h5>
+<div align="center">
+  <sup>1</sup> Huazhong University of Science and Technology&nbsp;&nbsp;&nbsp;
+  <sup>2</sup> Kling Team, Kuaishou Technology
+</div>
 
 
 
