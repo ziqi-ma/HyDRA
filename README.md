@@ -63,10 +63,10 @@ More results can be found on our [project homepage](https://kj-chen666.github.io
 
 
 ## 📅 TODO
-* [ ] Release the paper
+* [x] Release the paper
 * [ ] Release HM-World dataset
-* [ ] Release HyDRA checkpoints and inference code
-* [ ] Release HyDRA training code
+* [x] Release HyDRA checkpoints and inference code
+* [x] Release HyDRA training code
 
 
 ## 🛠️ Installation
@@ -111,7 +111,7 @@ HyDRA/
 
 ### Step 5: Download the trained HyDRA weights
 
-- Checkpoint link:
+- Checkpoint link: https://huggingface.co/Xiling6666/HyDRA
 - Recommended location: `./ckpts` (e.g., `./ckpts/hydra.pth`)
 
 

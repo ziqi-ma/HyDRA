@@ -133,8 +133,8 @@ def load_condition_json(path: str) -> Tuple[torch.Tensor, torch.Tensor]:
     Supports:
     - Split camera json (preferred for examples): {"cond_cam": {...}, "tgt_cam": {...}}
       where each is dict of 77 frames, each frame is a 4x4 numeric matrix.
-    - Also accepts {"context_camera": ..., "video_camera": ...} where tensors are either [20,12] (relative) or [77,4,4] (absolute).
-
+    - Also accepts {"context_camera": ..., "video_camera": ...} 
+    Returns (ref_camera, target_camera)
     """
     with open(path, "r", encoding="utf-8") as f:
         data: Dict[str, Any] = json.load(f)
@@ -228,7 +228,7 @@ def build_pipeline(
                 num_heads=num_heads,
                 num_frames=40,
                 frame_hw=(30 * 52),
-                top_k=9,
+                top_k=10,
                 frame_chunk_size=None,
             )
 

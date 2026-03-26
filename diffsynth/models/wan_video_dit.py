@@ -90,8 +90,8 @@ def convert_rt_to_viewmats(rt_matrix: torch.Tensor) -> torch.Tensor:
     
     # 最后一行保持 [0, 0, 0, 1]
     viewmats[..., 3, :] = torch.tensor([0, 0, 0, 1], 
-                                      device=rt_matrix.device, 
-                                      dtype=rt_matrix.dtype)
+                                    device=rt_matrix.device, 
+                                    dtype=rt_matrix.dtype)
     
     return viewmats
 
@@ -105,28 +105,10 @@ def sinusoidal_embedding_1d(dim, position):
     x = torch.cat([torch.cos(sinusoid), torch.sin(sinusoid)], dim=1)
     return x.to(position.dtype)
 
-########################
-def get_compressed_freqs_cis_3d(
-    dim: int,
-    f: int,
-    h: int,
-    w: int,
-    theta: float = 10000.0,
-    stride_f: float = 1.0,
-    stride_h: float = 2.0,
-    stride_w: float = 2.0,
-):
-    """
-    Build RoPE freqs for tokens produced by a strided 3D tokenizer.
-
-    For stride=2, output index i corresponds to input positions [2i, 2i+1];
-    using center coordinates (2i + 0.5) makes the compressed token's phase
-    aligned with the center of its receptive field (same for all axes).
-    """
-    # Center-of-receptive-field coordinates in the original (uncompressed) grid.
-    t_pos = torch.arange(f, dtype=torch.float32) * stride_f + (stride_f - 1.0) * 0.5
-    h_pos = torch.arange(h, dtype=torch.float32) * stride_h + (stride_h - 1.0) * 0.5
-    w_pos = torch.arange(w, dtype=torch.float32) * stride_w + (stride_w - 1.0) * 0.5
+def get_compressed_freqs_cis_3d(dim: int, f: int, h: int, w: int, theta: float = 10000.0):
+    t_pos = torch.arange(f, dtype=torch.float32) * 2 + 0.5
+    h_pos = torch.arange(h, dtype=torch.float32) * 2
+    w_pos = torch.arange(w, dtype=torch.float32) * 2
     
     # 1D rope precompute for each dimension
     def precompute_1d(d, pos):
@@ -231,7 +213,7 @@ class RMSNorm(nn.Module):
 class MemoryTokenizer(nn.Module):
     def __init__(self, dim):
         super().__init__()
-        self.conv = nn.Conv3d(dim, dim, kernel_size=(2, 4, 4), stride=(1, 4, 4))
+        self.conv = nn.Conv3d(dim, dim, kernel_size=(2, 2, 2), stride=(2, 2, 2))
         
     def forward(self, x):
         return self.conv(x)
@@ -276,47 +258,28 @@ class DynamicRetrievalAttention(nn.Module):
 
         if k_comp is not None and v_comp is not None:
 
-            # Prefer the actually-used compressed frame count.
             F_comp = int(similarity.shape[-1])
             HW_comp = k_comp.shape[1] // F_comp
             k_comp_frames = rearrange(k_comp, 'b (f hw) d -> b f hw d', f=F_comp, hw=HW_comp)
             v_comp_frames = rearrange(v_comp, 'b (f hw) d -> b f hw d', f=F_comp, hw=HW_comp)
-            
-            # Local Window Indices (same as before)
             radius = self.window_size // 2
             indices = torch.arange(F, device=q.device)
             start_indices = (indices - radius).clamp(min=0, max=F - self.window_size)
             window_range = torch.arange(self.window_size, device=q.device)
-            local_indices = start_indices.unsqueeze(1) + window_range.unsqueeze(0) # [F, window_size]
-            local_indices_expanded = local_indices.unsqueeze(0).expand(B, F, -1) # [B, F, window_size]
-
-            # Top-k Selection on Compressed Tokens
-            # similarity shape: [B, F, F_comp]
-            # Create mask for compressed tokens fully derived from local window
-            # Token j covers frames [j*factor, j*factor + (factor-1)]
-            # Window covers [start, start + window_size - 1]
-            # Token j is inside if token_start >= start AND token_end <= start + window_size - 1
-            
+            local_indices = start_indices.unsqueeze(1) + window_range.unsqueeze(0) 
+            local_indices_expanded = local_indices.unsqueeze(0).expand(B, F, -1)           
             token_indices = torch.arange(F_comp, device=q.device)
-            # Infer temporal stride assuming tokenizer uses kernel_f=2 and "valid" conv:
-            # F_comp = floor((F - kernel_f) / stride_f) + 1  => for kernel_f=2:
-            # stride_f = (F - 2) / (F_comp - 1)
             if F_comp > 1:
                 stride_f = max(1, int(round((F - 2) / (F_comp - 1))))
             else:
                 stride_f = 1
             token_start = token_indices * stride_f
             token_end = token_start + 1
-            
-            # Broadcast for comparison: [F, F_comp]
-            # start_indices: [F], token_start: [F_comp]
             win_start = start_indices.unsqueeze(1) # [F, 1]
             win_end = win_start + self.window_size - 1
             
             tok_s = token_start.unsqueeze(0) # [1, F_comp]
             tok_e = token_end.unsqueeze(0)
-            
-            # Check fully inside
             is_inside = (tok_s >= win_start) & (tok_e <= win_end) # [F, F_comp]
             
             mask = is_inside.unsqueeze(0).expand(B, F, F_comp) # [B, F, F_comp]
@@ -339,99 +302,66 @@ class DynamicRetrievalAttention(nn.Module):
             x = rearrange(output, 'b f hw d -> b (f hw) d')
             return x
 
-        # 步骤2: 构造局部窗口索引 (Local Window Indices)
-        # 逻辑：每个latent强制选中自己所在local window的sequence latent
-        # 使用滑动窗口逻辑，确保边界处窗口大小固定为 window_size，且包含自身
         radius = self.window_size // 2
         indices = torch.arange(F, device=q.device)
-        
-        # 计算窗口起始位置：保证窗口不越界且大小固定
-        # 例如 F=40, window=5: i=0 -> start=0; i=39 -> start=35
         start_indices = (indices - radius).clamp(min=0, max=F - self.window_size)
         window_range = torch.arange(self.window_size, device=q.device)
         
-        # 生成索引矩阵 [F, window_size]
         local_indices = start_indices.unsqueeze(1) + window_range.unsqueeze(0)
-        # 扩展到 batch 维度: [B, F, window_size]
         local_indices_expanded = local_indices.unsqueeze(0).expand(B, F, -1)
-
-        # 步骤3: Top-k 选择 (排除局部窗口内的帧)
-        # 创建掩码，将局部窗口内的帧在相似度矩阵中屏蔽，避免重复选择
         mask = torch.zeros(B, F, F, device=similarity.device, dtype=torch.bool)
         mask.scatter_(2, local_indices_expanded, True)
         
-        mask_val = -1e9 # 使用较大的负数屏蔽
+        mask_val = -1e9 
         similarity_masked = similarity.masked_fill(mask, mask_val)
         
-        # 选择 Top-K (从剩余帧中选择)
         topk_values, topk_indices = torch.topk(similarity_masked, k=self.top_k, dim=-1)  # [B, F, top_k]
         
-        # 步骤4: 合并索引 (Local Window + Top-K)
         selected_indices = torch.cat([local_indices_expanded, topk_indices], dim=-1)  # [B, F, total_selected]
         
-        # 步骤5: 预分配输出张量
         output = torch.zeros(B, F, HW, dim, device=q.device, dtype=q.dtype)
         
-        # 步骤6: 预先重组 Q 为多头格式
         q_frames_mh = rearrange(q_frames, 'b f hw (h d) -> b f h hw d', h=H)
         
         frame_indices = range(F)
         self._process_frame_chunk(output, q_frames_mh, k_frames, v_frames, 
                                     selected_indices, frame_indices, B, H, HW, dim)
         
-        # 步骤7: 合并所有帧的输出
         x = rearrange(output, 'b f hw d -> b (f hw) d')
         
         return x
     
     def _process_mixed_frame_chunk(self, output, q_frames_mh, k_frames, v_frames, 
-                                  k_comp_frames, v_comp_frames,
-                                  local_indices, topk_indices, 
-                                  frame_indices, B, H, HW, HW_comp, dim):
+                                k_comp_frames, v_comp_frames,
+                                local_indices, topk_indices, 
+                                frame_indices, B, H, HW, HW_comp, dim):
         """处理混合分辨率的注意力计算"""
         for frame_idx in frame_indices:
-            # Current Frame Q: [B, H, HW, D]
             q_frame = q_frames_mh[:, frame_idx]
             
-            # 1. Gather Local Window KV (Full Resolution)
-            # local_indices: [B, F, window_size]
-            cur_local_indices = local_indices[:, frame_idx] # [B, window_size]
+            cur_local_indices = local_indices[:, frame_idx]
             
-            # Gather from k_frames: [B, F, HW, D]
-            # Need to gather slices along F dimension
             batch_indices = torch.arange(B, device=k_frames.device).unsqueeze(1).expand(-1, self.window_size)
-            k_local = k_frames[batch_indices, cur_local_indices] # [B, window_size, HW, D]
+            k_local = k_frames[batch_indices, cur_local_indices] 
             v_local = v_frames[batch_indices, cur_local_indices]
             
-            # Flatten spatial: [B, window_size * HW, D]
             k_local_flat = rearrange(k_local, 'b w hw d -> b (w hw) d')
             v_local_flat = rearrange(v_local, 'b w hw d -> b (w hw) d')
 
-            # 2. Gather Top-K Compressed KV
-            # topk_indices: [B, F, top_k]
             cur_topk_indices = topk_indices[:, frame_idx] # [B, top_k]
             
             batch_indices_comp = torch.arange(B, device=k_frames.device).unsqueeze(1).expand(-1, self.top_k)
             k_comp = k_comp_frames[batch_indices_comp, cur_topk_indices] # [B, top_k, HW_comp, D]
             v_comp = v_comp_frames[batch_indices_comp, cur_topk_indices]
             
-            # Flatten spatial: [B, top_k * HW_comp, D]
             k_comp_flat = rearrange(k_comp, 'b k hwc d -> b (k hwc) d')
             v_comp_flat = rearrange(v_comp, 'b k hwc d -> b (k hwc) d')
             
-            # 3. Concatenate
-            k_all = torch.cat([k_local_flat, k_comp_flat], dim=1) # [B, Total_Tokens, D]
+            k_all = torch.cat([k_local_flat, k_comp_flat], dim=1) 
             v_all = torch.cat([v_local_flat, v_comp_flat], dim=1)
             
-            # 4. Reshape for Multi-Head Attention
-            # k_all: [B, S, D] -> [B, S, H, D/H]
-            # flash_attention input expects: q=[B, Sq, (H D)], k=[B, Sk, (H D)]
-            
-            # q_frame is [B, H, HW, D_head].
-            # We need to rearrange q for flash_attention: [B, HW, (H D_head)]
             q_flat_for_attn = rearrange(q_frame, 'b h hw d -> b hw (h d)')
             
-            # Calculate Attention
             attn_out = flash_attention(
                 q=q_flat_for_attn, k=k_all, v=v_all,
                 num_heads=self.num_heads
@@ -443,31 +373,23 @@ class DynamicRetrievalAttention(nn.Module):
                             selected_indices, frame_indices, B, H, HW, dim):
         """处理一批帧的注意力计算 (逻辑保持不变)"""
         for frame_idx in frame_indices:
-            # 当前帧的 Q
             q_frame = q_frames_mh[:, frame_idx]
+            frame_selected_indices = selected_indices[:, frame_idx] 
             
-            # 提取当前帧的候选KV索引
-            frame_selected_indices = selected_indices[:, frame_idx]  # [B, total_selected]
-            
-            # 提取候选KV
             batch_indices = torch.arange(B, device=k_frames.device).unsqueeze(1).expand(-1, self.total_selected)
             k_candidates = k_frames[batch_indices, frame_selected_indices]
             v_candidates = v_frames[batch_indices, frame_selected_indices]
             
-            # 重组为多头格式
             k_candidates_mh = rearrange(k_candidates, 'b k hw (h d) -> b k h hw d', h=H)
             v_candidates_mh = rearrange(v_candidates, 'b k hw (h d) -> b k h hw d', h=H)
             
-            # 拼接为长序列
             k_flat = rearrange(k_candidates_mh, 'b k h hw d -> b (k hw) h d')
             v_flat = rearrange(v_candidates_mh, 'b k h hw d -> b (k hw) h d')
             
-            # 准备注意力输入
             q_flat_for_attn = rearrange(q_frame, 'b h hw d -> b hw (h d)')
             k_flat_for_attn = rearrange(k_flat, 'b s h d -> b s (h d)')
             v_flat_for_attn = rearrange(v_flat, 'b s h d -> b s (h d)')
             
-            # 计算注意力
             attn_out = flash_attention(
                 q=q_flat_for_attn, k=k_flat_for_attn, v=v_flat_for_attn,
                 num_heads=self.num_heads
@@ -475,7 +397,6 @@ class DynamicRetrievalAttention(nn.Module):
             
             output[:, frame_idx] = attn_out
             
-            # 清理中间变量
             del k_candidates, v_candidates, k_candidates_mh, v_candidates_mh
             del k_flat, v_flat, q_flat_for_attn, k_flat_for_attn, v_flat_for_attn
 
@@ -484,7 +405,7 @@ class SelfAttention(nn.Module):
     Tokenizer = None
 
     def __init__(self, dim: int, num_heads: int, eps: float = 1e-6,
-                attention_type: str = "sparse_frame",  # "standard" or "sparse_frame"
+                attention_type: str = "sparse_frame",  
                 sparse_frame_args: dict = None, hydra: bool = False, change_sparse: Optional[bool] = None):
         super().__init__()
         self.dim = dim
@@ -492,7 +413,6 @@ class SelfAttention(nn.Module):
         self.head_dim = dim // num_heads
         self.attention_type = attention_type
         
-        # 共享的线性层
         self.q = nn.Linear(dim, dim)
         self.k = nn.Linear(dim, dim)
         self.v = nn.Linear(dim, dim)
@@ -503,7 +423,7 @@ class SelfAttention(nn.Module):
         if change_sparse is not None:
             hydra = bool(change_sparse)
         self.hydra = bool(hydra)
-        self.change_sparse = self.hydra  # backward-compatible alias
+        self.change_sparse = self.hydra  
         if self.hydra:
             self.attention_type = "sparse_frame"
             if self.Tokenizer is not None:
@@ -533,47 +453,33 @@ class SelfAttention(nn.Module):
             v = self.v(x)
             
             x_3d = rearrange(x, 'b (f h w) c -> b c f h w', f=40, h=30, w=52)
-            x_token = self.tokenizer(x_3d) # [B, D, F/2, H/2, W/2]
+            x_token = self.tokenizer(x_3d) 
             f_comp, h_comp, w_comp = x_token.shape[2], x_token.shape[3], x_token.shape[4]
             
-            # Flatten tokens for Linear layers
             x_token_flat = rearrange(x_token, 'b c f h w -> b (f h w) c')
             
-            # Compute Compressed K, V
             k_comp = self.norm_k(self.k(x_token_flat))
             v_comp = self.v(x_token_flat)
             
-            # 2. RoPE for Compressed K
-            stride_f = stride_h = stride_w = 2.0
-            conv = getattr(self.tokenizer, "conv", None)
-            if conv is not None and hasattr(conv, "stride"):
-                try:
-                    s = conv.stride
-                    # Conv3d.stride is typically a tuple[int,int,int]
-                    stride_f, stride_h, stride_w = float(s[0]), float(s[1]), float(s[2])
-                except Exception:
-                    pass
             freqs_comp = get_compressed_freqs_cis_3d(
                 self.head_dim,
                 f_comp,
                 h_comp,
                 w_comp,
-                stride_f=stride_f,
-                stride_h=stride_h,
-                stride_w=stride_w,
             ).to(x.device)
 
             
-            # 3. Similarity (Q vs K_comp)
             q_frames = rearrange(q, 'b (f h w) d -> b f h w d', f=40, h=30, w=52)
             q_frame_repr = q_frames.mean(dim=3).mean(dim=2) # [B, F, D]
             
             k_comp_frames = rearrange(k_comp, 'b (f h w) d -> b f h w d', f=f_comp, h=h_comp, w=w_comp)
             k_comp_repr = k_comp_frames.mean(dim=3).mean(dim=2) # [B, F', D]
             
+            k_frames = rearrange(k, 'b (f h w) d -> b f h w d', f=40, h=30, w=52)
+            k_frame_repr = k_frames.mean(dim=3).mean(dim=2) # [B, F, D]
+
             similarity = torch.matmul(q_frame_repr, k_comp_repr.transpose(-2, -1)) # [B, F, F']
-                                
-            # Apply RoPE
+                        
             q = rope_apply(q, freqs, self.num_heads)
             k = rope_apply(k, freqs, self.num_heads)
             k_comp = rope_apply(k_comp, freqs_comp, self.num_heads)
@@ -592,13 +498,6 @@ class SelfAttention(nn.Module):
         x = self.o(x)
                 
         return x
-
-
-# Backward-compatible alias for older scripts/configs.
-SparseFrameAttentionModule = DynamicRetrievalAttention
-
-
-
 
 class CrossAttention(nn.Module):
     def __init__(self, dim: int, num_heads: int, eps: float = 1e-6, has_image_input: bool = False):

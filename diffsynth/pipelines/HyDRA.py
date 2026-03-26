@@ -312,11 +312,6 @@ class HyDRAPipeline(BasePipeline):
         if cfg_scale != 1.0:
             prompt_emb_nega = self.encode_prompt(negative_prompt, positive=False)
             
-        # Encode image
-        # if input_image is not None and self.image_encoder is not None:
-        #     self.load_models_to_device(["image_encoder", "vae"])
-        #     image_emb = self.encode_image(input_image, num_frames, height, width)
-        # else:
         image_emb = {}
         extra_input = self.prepare_extra_input(latents)
         
