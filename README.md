@@ -111,7 +111,7 @@ HyDRA/
 
 ### Step 5: Download the trained HyDRA weights
 
-- Checkpoint link: https://huggingface.co/Xiling6666/HyDRA
+- Checkpoint link: https://huggingface.co/H-EmbodVis/HyDRA
 - Recommended location: `./ckpts` (e.g., `./ckpts/hydra.pth`)
 
 
@@ -121,6 +121,30 @@ Run inference on the example data:
 
 ```bash
 python infer_hydra.py
+```
+
+
+## 🎓 Training 
+
+We provide an example training script that can be used to train on a custom dataset.
+
+### Data preparation
+
+For each training sample, please preprocess and save it as a single `.pth` file:
+
+1. Encode the custom video into **video latents** with the VAE.
+2. Encode the caption into a **text embedding** with the text encoder.
+3. Convert the **camera poses** into a relative coordinate system.
+
+Then, load these per-sample `.pth` files in the training script and train the **DiT** module.
+
+### Train command
+
+```bash
+python train_hydra.py \
+  --dit_path ./ckpts/Wan2.1-T2V-1.3B/diffusion_pytorch_model.safetensors \
+  --use_gradient_checkpointing \
+  --hydra 
 ```
 
 
