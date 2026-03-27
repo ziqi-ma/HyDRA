@@ -6,7 +6,7 @@
         <img src="./assets/symbol.png" alt="Project Icon" width="250">
     </div>
     <div>
-        <a href="https://arxiv.org/abs/XXXX.XXXXX"><img src="https://img.shields.io/badge/arXiv-Paper-b31b1b?logo=Arxiv"></a>
+        <a href="https://arxiv.org/pdf/2603.25716"><img src="https://img.shields.io/badge/arXiv-Paper-b31b1b?logo=Arxiv"></a>
         <a href="https://kj-chen666.github.io/Hybrid-Memory-in-Video-World-Models/"><img src="https://img.shields.io/badge/Homepage-project-orange.svg?logo=googlehome"></a>
         <a href="https://example.com/dataset"><img src="https://img.shields.io/badge/🤗-Dataset-yellow.svg"></a>
         <a href="https://opensource.org/licenses/Apache-2.0"><img src="https://img.shields.io/badge/License-Apache%202.0-blue?style=flat-square"></a>
@@ -141,6 +141,6 @@ If you find our work useful, please consider citing:
 @article{chen2026out,
   title   = {Out of Sight but Not Out of Mind: Hybrid Memory for Dynamic Video World Models},
   author  = {Chen, Kaijin and Liang, Dingkang and Zhou, Xin and Ding, Yikang and Liu, Xiaoqiang and Wan, Pengfei and Bai, Xiang},
-  journal = {arXiv preprint arXiv:XXXX.XXXXX},
+  journal = {arXiv preprint arXiv:2603.25716},
   year    = {2026}
 }
