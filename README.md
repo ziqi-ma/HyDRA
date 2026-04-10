@@ -60,6 +60,12 @@ More results can be found on our [project homepage](https://kj-chen666.github.io
   <img src="assets/genetation_videos/5.gif" width="32%" />
   <img src="assets/genetation_videos/6.gif" width="32%" />
 </div>
+<div align="center">
+  <img src="assets/genetation_videos/7.gif" width="32%" />
+  <img src="assets/genetation_videos/8.gif" width="32%" />
+  <img src="assets/genetation_videos/9.gif" width="32%" />
+</div>
+
 
 
 ## 📅 TODO
