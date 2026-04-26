@@ -8,7 +8,7 @@
     <div>
         <a href="https://arxiv.org/pdf/2603.25716"><img src="https://img.shields.io/badge/arXiv-Paper-b31b1b?logo=Arxiv"></a>
         <a href="https://kj-chen666.github.io/Hybrid-Memory-in-Video-World-Models/"><img src="https://img.shields.io/badge/Homepage-project-orange.svg?logo=googlehome"></a>
-        <a href="https://example.com/dataset"><img src="https://img.shields.io/badge/🤗-Dataset-yellow.svg"></a>
+        <a href="https://huggingface.co/datasets/KlingTeam/HM-World"><img src="https://img.shields.io/badge/🤗-Dataset-yellow.svg"></a>
         <a href="https://opensource.org/licenses/Apache-2.0"><img src="https://img.shields.io/badge/License-Apache%202.0-blue?style=flat-square"></a>
     </div>
 </div>
@@ -70,7 +70,7 @@ More results can be found on our [project homepage](https://kj-chen666.github.io
 
 ## 📅 TODO
 * [x] Release the paper
-* [ ] Release HM-World dataset
+* [x] Release HM-World dataset
 * [x] Release HyDRA checkpoints and inference code
 * [x] Release HyDRA training code
 
